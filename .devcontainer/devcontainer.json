@@ -17,5 +17,6 @@
       "label": "Desktop (VNC)",
       "onAutoForward": "openBrowser"
     }
-  }
+  },
+  "postStartCommand": "bash .devcontainer/post_start.sh"
 }
