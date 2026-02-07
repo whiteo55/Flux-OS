@@ -1,0 +1,40 @@
+name: Build ISO and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 genisoimage
+
+      - name: Build ISO
+        run: |
+          chmod +x ./build.sh || true
+          ./build.sh
+
+      - name: Prepare site directory
+        run: |
+          mkdir -p site
+          # Try common locations for generated ISO and copy it to site/flux.iso
+          if [ -f flux.iso ]; then cp flux.iso site/flux.iso; fi
+          if [ -f out/flux.iso ]; then cp out/flux.iso site/flux.iso; fi
+          if [ -f isodir/flux.iso ]; then cp isodir/flux.iso site/flux.iso; fi
+          # fallback: pick the first .iso found
+          found_iso=$(find . -maxdepth 3 -type f -iname "*.iso" -print -quit)
+          if [ -n "$found_iso" ] && [ ! -f site/flux.iso ]; then cp "$found_iso" site/flux.iso; fi
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site

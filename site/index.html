@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Flux-OS — Run in browser</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; margin: 1rem; }
+      #screen { width: 800px; height: 600px; border: 1px solid #333; }
+    </style>
+  </head>
+  <body>
+    <h1>Flux-OS (in-browser)</h1>
+    <p>If a matching ISO is present (<code>flux.iso</code>), the emulator will try to boot it automatically.</p>
+    <div id="screen"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/v86/build/libv86_full.js"></script>
+    <script>
+      // Basic v86 starter that attempts to boot from site/flux.iso
+      (function () {
+        var screen = document.getElementById('screen');
+        try {
+          var emulator = new V86Starter({
+            wasm_url: 'https://cdn.jsdelivr.net/npm/v86/build/v86.wasm',
+            bios: { url: 'https://cdn.jsdelivr.net/npm/v86/build/seabios.bin' },
+            vga_bios: { url: 'https://cdn.jsdelivr.net/npm/v86/build/vgabios.bin' },
+            cdrom: { url: 'flux.iso' },
+            autostart: true,
+            screen_container: screen
+          });
+        } catch (e) {
+          screen.innerText = 'Failed to start emulator: ' + e;
+        }
+      })();
+    </script>
+  </body>
+</html>
