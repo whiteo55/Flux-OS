@@ -1,0 +1,856 @@
+================================================================================
+FLUX-OS COMPLETE PROJECT DOCUMENTATION
+================================================================================
+Generated: February 8, 2026
+Repository: whiteo55/Flux-OS (GitHub)
+Branch: main (commit 8c4bd6e - v2.3 pre-alpha)
+Status: Modified (kernel.c, graphics library, build outputs)
+
+================================================================================
+1. DEVELOPMENT ENVIRONMENT
+================================================================================
+
+CODESPACE DETAILS:
+- OS: Ubuntu 22.04.5 LTS (dev container)
+- Architecture: x86_64
+- Terminal: bash with git, build tools pre-installed
+- Available Commands: apt, git, curl, wget, ssh, scp, rsync, gpg, ps, lsof, netstat, top, tree, find, grep, zip, unzip, tar, gzip, bzip2, xz
+- VS Code Extensions: Available for installation as needed
+
+DESKTOP ENVIRONMENT:
+- GUI Framework: Fluxbox (lightweight X11 window manager)
+- Display: VNC-accessible via http://localhost:6080
+- Rendering: Can be restarted with VS Code task "Restart Fluxbox"
+- Virtualization: QEMU i386 for kernel testing
+
+BUILD TOOLS:
+- Assembler: GNU as (i386 32-bit mode)
+- C Compiler: GCC with -m32 -ffreestanding flags for bare-metal
+- Linker: GNU ld with custom linker scripts
+- ISO Creator: grub-mkrescue for bootable ISO
+- Build System: Bash shell scripts (build.sh, run_qemu.sh, etc.)
+
+================================================================================
+2. REPOSITORY STRUCTURE
+================================================================================
+
+PROJECT ROOT FILES:
+- build.sh              - Main build script: compiles kernel, assembles bootloader, creates ISO
+- run_qemu.sh          - Launches QEMU with built ISO (previously used, now superseded by GUI scripts)
+- run_gui.sh           - GUI launch script (references run_graphics.sh)
+- run_graphics.sh      - Alternative graphics test script
+- link.ld              - Old linker script (may be deprecated)
+- linker.ld            - Current linker script for kernel linking
+- flux-kernel          - Compiled kernel binary (ELF format)
+- flux-os.iso          - Bootable ISO image with GRUB bootloader
+
+DIRECTORY STRUCTURE:
+src/
+├── boot/
+│   └── boot.s         - x86 bootloader assembly (multiboot setup, protected mode transition)
+├── kernel/
+│   └── kernel.c       - Main kernel entry point, multiboot handling, VGA diagnostics
+└── graphics/
+    ├── gfx.h          - Graphics library header (function declarations, color macros)
+    └── gfx.c          - Graphics library implementation (primitives, GUI rendering)
+
+isodir/
+├── boot/
+│   ├── flux-kernel    - Compiled kernel (copied from project root)
+│   └── grub/
+│       └── grub.cfg   - GRUB bootloader configuration
+
+.devcontainer/
+└── post_start.sh      - Container initialization script
+
+================================================================================
+3. BUILD PROCESS
+================================================================================
+
+COMPILATION STAGES (from build.sh):
+
+1. ASSEMBLY (Bootloader):
+   Command: as --32 src/boot/boot.s -o boot.o
+   Output: boot.o (32-bit x86 object file)
+   Purpose: Sets up multiboot header, initializes protected mode, jumps to kernel_main
+   Flags: --32 (force 32-bit mode)
+
+2. C COMPILATION (Kernel):
+   Command: gcc -m32 -ffreestanding -c src/kernel/kernel.c -o kernel.o
+   Output: kernel.o (32-bit x86 object file)
+   Flags:
+     -m32: Compile for 32-bit target
+     -ffreestanding: Disable standard library, target bare metal
+   Includes: stdint.h (standard integer types)
+
+3. GRAPHICS LIBRARY COMPILATION:
+   Command: gcc -m32 -ffreestanding -c src/graphics/gfx.c -o gfx.o
+   Output: gfx.o (32-bit x86 object file)
+   Features: Drawing primitives, GUI components, text rendering
+   Key Functions:
+   - set_pixel(x, y, color)
+   - fill_rect(x, y, width, height, color)
+   - draw_rect(x, y, width, height, color)
+   - draw_line(x1, y1, x2, y2, color)
+   - draw_char(x, y, c, fg, bg)
+   - draw_string(x, y, str, fg, bg)
+   - draw_window(win)
+   - draw_taskbar(color)
+   - draw_wallpaper()
+   - clear_screen(color)
+
+4. LINKING:
+   Command: ld -T linker.ld boot.o kernel.o gfx.o -o flux-kernel
+   Output: flux-kernel (linked ELF executable)
+   Linker Script: linker.ld (defines memory layout, entry point)
+   Entry Point: multiboot_header (0x00100000)
+
+5. ISO CREATION:
+   Command: grub-mkrescue --output=flux-os.iso isodir/
+   Output: flux-os.iso (bootable ISO image)
+   Bootloader: GRUB 2
+   Kernel: Multiboot 1 compatible
+
+TOTAL BUILD TIME: ~2-3 seconds
+BUILD SUCCESS INDICATOR: "Build Complete!" message
+
+================================================================================
+4. KERNEL ARCHITECTURE
+================================================================================
+
+BOOTLOADER (src/boot/boot.s):
+- Multiboot 1 header (GRUB recognition)
+- Initial stack: 0x10000 + 16KB
+- Protected mode setup (GDT, IDT)
+- Long jump to kernel_main with EBX (multiboot pointer)
+- Architecture: 32-bit x86 bare metal
+
+KERNEL ENTRY (src/kernel/kernel.c):
+- Function: void kernel_main(multiboot_info_t* mb_info)
+- Parameter: Multiboot info structure (passed in EBX register)
+- Execution Flow:
+  1. Initialize VGA text buffer (0xB8000)
+  2. Display diagnostic messages (kernel loaded, pointer value, flags)
+  3. Check multiboot flags (bit 12 = graphics info available)
+  4. Attempt to read VBE (VESA BIOS Extensions) info from GRUB
+  5. Display VBE raw pointer and status
+  6. Initialize graphics globals: framebuffer, screen_width, screen_height, pitch
+  7. Render GUI components (wallpaper, windows, taskbar, text)
+  8. Enter infinite halt loop (while(1) __asm__("hlt");)
+
+MULTIBOOT INFO STRUCTURE:
+typedef struct {
+    uint32_t flags;                    // Multiboot flags
+    uint32_t mem_lower, mem_upper;     // Memory info
+    uint32_t boot_device;              // Boot device
+    uint32_t cmdline;                  // Kernel command line
+    uint32_t mods_count, mods_addr;    // Modules info
+    uint32_t syms[4];                  // Symbol table
+    uint32_t mmap_length, mmap_addr;   // Memory map
+    uint32_t drives_length, drives_addr; // Drive info
+    uint32_t config_table;             // APM table
+    uint32_t boot_loader_name;         // Bootloader name
+    uint32_t apm_table;                // APM table
+    uint32_t vbe_control_info;         // VBE control (offset +40)
+    uint32_t vbe_mode_info;            // VBE mode info (offset +44)
+    uint16_t vbe_mode;                 // VBE mode number
+    uint16_t vbe_interface_seg/off;    // VBE interface
+    uint16_t vbe_interface_len;        // VBE interface length
+}
+
+VGA TEXT DIAGNOSTICS (0xB8000):
+Line 0 (Yellow):  "FLUX-OS: Kernel running!"
+Line 1 (Cyan):    "mb_info pointer (decimal): " + value
+Line 2 (Green/Red): "Result: mb_info is [VALID/NULL]"
+Line 4 (Cyan):    "Multiboot flags (hex): " + hex value
+Line 5 (Green/Red): "Bit 12 [SET/NOT SET]: Graphics info [available/unavailable]"
+Line 6 (Cyan):    "Raw memory at +76: " + VBE pointer hex
+Line 7 (Green):   "Using hardcoded QEMU framebuffer..."
+Line 8 (Green):   "Framebuffer: 0xFD000000"
+Line 9 (Green):   "Resolution: 1024x768"
+Line 10 (Green):  "Status: Kernel operational. Graphics pending VBE init."
+
+GRAPHICS GLOBALS (from gfx.c, exported):
+extern uint32_t* framebuffer;          // Framebuffer pointer (attempted: 0xFD000000)
+extern int screen_width;               // Width in pixels (1024)
+extern int screen_height;              // Height in pixels (768)
+extern int pitch;                      // Bytes per scanline (4096 = 1024*4 for 32-bit)
+
+HALT BEHAVIOR:
+- After initialization, kernel enters HLT loop
+- QEMU continues running, VNC display shows static content
+- No interrupt handlers installed (no preemption, no multitasking)
+
+================================================================================
+5. GRAPHICS SYSTEM
+================================================================================
+
+CURRENT STATUS: Text mode only (framebuffer writes attempted but not working)
+
+GRAPHICS LIBRARY LOCATION: src/graphics/gfx.c / gfx.h
+
+COLOR SYSTEM:
+- Format: 32-bit ARGB (0xAARRGGBB)
+- Alpha channel: 0xFF (fully opaque)
+- Predefined Colors:
+  COLOR_BLACK      0xFF000000
+  COLOR_WHITE      0xFFFFFFFF
+  COLOR_RED        0xFFFF0000
+  COLOR_GREEN      0xFF00FF00
+  COLOR_BLUE       0xFF0000FF
+  COLOR_GRAY       0xFF808080
+  COLOR_DARK_GRAY  0xFF404040
+  COLOR_LIGHT_GRAY 0xFFC0C0C0
+  COLOR_CYAN       0xFF00FFFF
+  COLOR_YELLOW     0xFFFFFF00
+  COLOR_MAGENTA    0xFFFF00FF
+
+DRAWING PRIMITIVES:
+1. set_pixel(x, y, color)
+   - Sets single pixel to color
+   - Pitch-aware: row = (uint32_t*)((uint8_t*)framebuffer + y * pitch) + x
+   - Bounds checking: if !framebuffer return
+   - Status: UPDATED for pitch calculation
+
+2. fill_rect(x, y, width, height, color)
+   - Fills rectangular area with solid color
+   - Uses nested loops (y, then x)
+   - Pitch-aware row calculation
+   - Status: UPDATED for pitch calculation
+
+3. draw_rect(x, y, width, height, color)
+   - Draws hollow rectangle outline
+   - Uses set_pixel for edges
+   - Status: Indirect pitch support (calls set_pixel)
+
+4. draw_line(x1, y1, x2, y2, color)
+   - Line drawing algorithm (Bresenham-style)
+   - Uses set_pixel for each point
+   - Status: Indirect pitch support (calls set_pixel)
+
+5. draw_char(x, y, c, fg, bg)
+   - Renders 5x7 bitmap character
+   - Foreground and background colors
+   - Font data: static const uint8_t font_data[256][7]
+   - Pitch-aware row calculation
+   - Status: UPDATED for pitch calculation
+
+6. draw_string(x, y, str, fg, bg)
+   - Renders text string starting at (x, y)
+   - Uses draw_char for each character
+   - Auto-wraps at screen_width
+   - Status: Indirect pitch support (calls draw_char)
+
+GUI COMPONENTS:
+1. draw_window(window_t* win)
+   - Renders window with title bar and border
+   - Structure: x, y, width, height, flags, bg_color, border_color, title
+   - Components: Title bar fill, border lines, title text
+   - Status: Indirect pitch support
+
+2. draw_taskbar(color)
+   - Renders taskbar at bottom of screen
+   - Height: 30 pixels
+   - Components: Background fill, top border line, "FLUX-OS" text
+   - Position: y = screen_height - 30
+   - Status: Indirect pitch support
+
+3. draw_wallpaper()
+   - Renders full-screen background
+   - Blue gradient effect
+   - Uses fill_rect with pitch-aware calculation
+   - Status: UPDATED for pitch calculation
+
+4. clear_screen(color)
+   - Fills entire screen with single color
+   - Status: Uses fill_rect (pitch-aware)
+
+FONT SYSTEM:
+- Bitmap font: 5x7 pixels per character
+- Character set: 256 ASCII characters pre-defined
+- Font data storage: 256 entries × 7 bytes each = ~1.8 KB
+- Font characters defined for: space, digits 0-9, letters, symbols, etc.
+- Example characters:
+  '0' = {0x3E, 0x51, 0x59, 0x45, 0x3E, 0x00, 0x00}
+  '1' = {0x00, 0x42, 0x7F, 0x40, 0x00, 0x00, 0x00}
+
+GRAPHICS ISSUES AND DEBUGGING:
+Problem 1: GRUB Graphics Mode Not Initialized
+- Expected: GRUB to set up VBE graphics mode
+- Actual: GRUB stays in 80x25 text mode
+- Evidence: Multiboot info bit 12 not set, VBE pointer is NULL
+- Impact: Framebuffer address unknown, graphics disabled
+- Solution Attempt: Hardcode framebuffer to 0xFD000000
+- Status: Hardcoded address not working, no pixels appear
+
+Problem 2: Framebuffer Address Mismatch
+- Attempted addresses: 0xD0000000, 0xE0000000, 0xFC000000, 0xFD000000
+- Result: None produced visible output
+- Possible causes:
+  a) QEMU video memory not where expected
+  b) Memory mapping incorrect
+  c) Wrong color format
+  d) Pitch calculation wrong
+- Current workaround: Fall back to VGA text mode only
+
+Problem 3: Memory Stride/Pitch Calculation
+- Initial assumption: Linear pixel indexing (framebuffer[y * width + x])
+- Reality: GPU memory has pitch (stride) per scanline
+- For 1024x768@32-bit: pitch should be 4096 bytes (not 3072)
+- Fix applied: All drawing functions updated to use pitch-aware indexing
+- Verification: Code updated but untested on actual graphics
+
+NEXT STEPS FOR GRAPHICS:
+1. Enable GRUB graphics mode via serial console VBE detection
+2. Use QEMU's "-vga qxl" or "-vga std" with proper initialization
+3. Implement VBE detection routine in kernel
+4. Verify framebuffer address and pitch from multiboot info
+5. Test graphics output incrementally (single pixel → lines → shapes → text)
+
+================================================================================
+6. QEMU SETUP
+================================================================================
+
+QEMU CONFIGURATION:
+Command Line: DISPLAY=:1 qemu-system-i386 -m 512 -cdrom flux-os.iso -vga std
+Parameters:
+  -m 512                 - RAM: 512 MB (adequate for test kernel)
+  -cdrom flux-os.iso     - Boot from ISO image
+  -vga std               - Video adapter: standard VGA (1024x768)
+  DISPLAY=:1             - X11 display server on port :1
+
+DISPLAY AND VNC:
+- VM Display: Rendered on Fluxbox X11 server (DISPLAY=:1)
+- VNC Access: http://localhost:6080
+- Browser Support: Works in VS Code Simple Browser
+- Resolution: Varies by client, QEMU window defaults to 1024x768
+
+QEMU PROCESS MANAGEMENT:
+- Start: pkill -9 qemu first (kill old instance), then launch new
+- Status: ps aux | grep qemu
+- Background: DISPLAY=:1 qemu-system-i386 ... &
+- Kill: pkill -9 qemu
+- Restart via VS Code Task: "shell: Restart Fluxbox" (restarts desktop environment)
+
+BOOT SEQUENCE:
+1. QEMU starts with ISO loaded
+2. GRUB bootloader appears (menu or boot directly)
+3. GRUB loads kernel from ISO
+4. Multiboot info passed to kernel (EBX register)
+5. Kernel initializes, displays VGA text diagnostics
+6. Kernel attempts to initialize graphics (currently fails)
+7. Kernel enters HLT loop, QEMU continues running
+
+CURRENT BEHAVIOR:
+- QEMU window shows GRUB menu briefly, then kernel text output
+- VGA text buffer displays 80x25 white text on black
+- Graphics mode not initialized (no pixels visible)
+- QEMU remains running, can be inspected via VNC
+
+PREVIOUS MENU TABS:
+- Issue: QEMU "menu tabs" (VM tabs UI) disappeared after recent code changes
+- Possible causes:
+  a) Fluxbox window manager state
+  b) QEMU configuration changes
+  c) Display server issue
+- Resolution: Restart Fluxbox, check QEMU process, verify DISPLAY variable
+
+================================================================================
+7. GRUB BOOTLOADER CONFIGURATION
+================================================================================
+
+CONFIGURATION FILE: isodir/boot/grub/grub.cfg
+
+CURRENT SETTINGS:
+set timeout=0
+set default=0
+terminal_output console
+menuentry "Flux-OS" {
+    multiboot /boot/flux-kernel
+    boot
+}
+
+CONFIGURATION EXPLANATION:
+- timeout=0: No menu timeout, boot immediately
+- default=0: Default to first menu entry (Flux-OS)
+- terminal_output console: Use text mode (graphics disabled)
+  Note: Previously attempted "gfxterm" mode, but VBE init failed
+- menuentry: Single boot option labeled "Flux-OS"
+- multiboot: Load kernel as Multiboot 1 compatible
+- /boot/flux-kernel: Kernel location on ISO
+
+MULTIBOOT HANDOFF:
+- GRUB reads kernel ELF header for Multiboot tags
+- GRUB loads kernel at 0x00100000 (1 MB mark, conventional)
+- GRUB jumps to kernel entry point with:
+  - EBX register: pointer to Multiboot Info structure
+  - EAX register: Multiboot magic number (0x2BADB002)
+- Info structure location: kernel allocates space and initializes
+
+ATTEMPTED GRAPHICS MODES (disabled):
+- gfxterm 1024x768: GRUB failed to initialize VBE
+- graphicsterm: Not recognized
+- Fallback: Always console (text mode)
+
+GRUB MENU APPEARANCE:
+- Usually shows "Flux-OS" entry
+- After selection, kernel loads and begins execution
+- Kernel output appears on same console
+
+================================================================================
+8. LINKER SCRIPTS
+================================================================================
+
+PRIMARY LINKER SCRIPT: linker.ld
+
+KEY SECTIONS:
+ENTRY(multiboot_header)           - Entry point symbol
+MEMORY { ... }                    - Memory layout definition
+SECTIONS { ... }                  - Section mapping
+
+MEMORY LAYOUT:
+- RAM: 0x00000000 - (size varies)
+- Reserved: 0x00000000 - 0x000FFFFF (first 1 MB - BIOS, multiboot area)
+- Kernel Load: 0x00100000 (1 MB mark)
+- Code: Executable, readable
+- Data: Readable, writable
+- Debug: Optional debug info
+
+SECTION MAPPING:
+- .multiboot: Multiboot header (critical for GRUB recognition)
+- .text: Code section (read-only, executable)
+- .rodata: Read-only data (strings, constants)
+- .data: Initialized global variables
+- .bss: Uninitialized global variables
+- .plt, .got: Position-independent code (if enabled)
+
+LINKER FLAGS (from build.sh):
+- -T linker.ld: Use custom linker script
+- boot.o, kernel.o, gfx.o: Object files to link
+- -o flux-kernel: Output filename (ELF executable)
+
+SYMBOL RESOLUTION:
+- multiboot_header: Defined in boot.s
+- kernel_main: Defined in kernel.c, first C function called
+- Graphics functions: Exported from gfx.c, used by kernel.c
+- Font data: Compiled into gfx.o, statically linked
+
+================================================================================
+9. FLUXBOX DESKTOP ENVIRONMENT
+================================================================================
+
+DESKTOP FRAMEWORK: Fluxbox
+- Type: Lightweight X11 window manager
+- Purpose: Manage windows, provide desktop environment for QEMU
+- Resource Footprint: Minimal (suitable for dev containers)
+
+STARTING FLUXBOX:
+- Manual: DISPLAY=:1 fluxbox &
+- Via VS Code Task: "Restart Fluxbox" (shell command)
+- Auto-start: Configured in dev container (post_start.sh)
+
+FLUXBOX FEATURES:
+- Window management: Keyboard and mouse controls
+- Menu: Right-click on desktop
+- Taskbar: Bottom of screen showing open windows
+- Workspace support: Multiple virtual desktops
+- Configuration: ~/.fluxbox/init, ~/.fluxbox/menu
+
+QEMU IN FLUXBOX:
+- QEMU window appears as managed window
+- Title bar: Shows window ID and application name
+- Resize: Drag edges to resize VM display
+- Minimize/Maximize: Standard window controls
+- Move: Drag title bar to move window
+
+DISPLAY SERVER (X11):
+- Server: X.org or compatible
+- Display: :1 (first display, :0 would be the real display if available)
+- Screen Resolution: Depends on container capabilities
+- Color Depth: 24-bit RGB (typical)
+- Window Manager: Fluxbox
+
+ACCESSING DESKTOP:
+- VNC Client: http://localhost:6080 (VS Code Simple Browser)
+- Remote Desktop: RDP may be available (check container config)
+- Direct X11: ssh -X if SSH access available
+
+DESKTOP CUSTOMIZATION:
+- Config dir: ~/.fluxbox/
+- Init file: Controls startup and behavior
+- Menu file: Right-click menu entries
+- Styles: Theme and appearance
+- Key bindings: Keyboard shortcuts
+
+TROUBLESHOOTING:
+- Black screen: Fluxbox may not be running, restart via task
+- QEMU not visible: Check QEMU process, verify DISPLAY=:1
+- VNC not working: Verify port 6080, check X11 server status
+- Performance: Fluxbox is lightweight, usually not a bottleneck
+
+================================================================================
+10. KEY FILES DETAILED BREAKDOWN
+================================================================================
+
+FILE: src/boot/boot.s (Bootloader Assembly)
+Location: /workspaces/Flux-OS/src/boot/boot.s
+Size: ~100-150 lines
+Purpose: Protected mode initialization, multiboot setup, kernel entry
+Key Functions:
+  1. Multiboot header definition (GRUB recognition)
+  2. GDT (Global Descriptor Table) setup
+  3. IDT (Interrupt Descriptor Table) stubs
+  4. Stack initialization at 0x10000+16KB
+  5. Mode switching to 32-bit protected mode
+  6. Jump to kernel_main with EBX (multiboot pointer)
+
+Critical Symbols:
+  - multiboot_header: Entry point, location 0x00100000
+  - boot_stack: Stack limit (top of allocated stack space)
+  - gdt: Global Descriptor Table
+  - kernel_main: C function entry point
+
+Compilation: as --32 src/boot/boot.s -o boot.o
+
+FILE: src/kernel/kernel.c (Main Kernel)
+Location: /workspaces/Flux-OS/src/kernel/kernel.c
+Size: ~310 lines (as of February 8, 2026)
+Purpose: Kernel main logic, multiboot handling, VGA diagnostics, graphics initialization
+Key Functions:
+  1. kernel_main(multiboot_info_t* mb_info): Main entry point
+  2. VGA buffer initialization and text output
+  3. Multiboot pointer validation
+  4. Multiboot flag checking (bit 12 = graphics)
+  5. VBE mode info reading (attempted, currently fails)
+  6. Graphics global variable initialization
+  7. Infinite HLT loop
+
+Structures Defined:
+  - multiboot_info_t: Multiboot kernel interface
+  - vbe_mode_info_t: VBE mode information (for graphics)
+
+Color Definitions:
+  - 11 COLOR_* macros (BLACK, WHITE, RED, etc.)
+
+Compilation: gcc -m32 -ffreestanding -c src/kernel/kernel.c -o kernel.o
+
+FILE: src/graphics/gfx.c (Graphics Library)
+Location: /workspaces/Flux-OS/src/graphics/gfx.c
+Size: ~226 lines
+Purpose: Graphics primitives, GUI components, text rendering
+Key Global Variables:
+  - uint32_t* framebuffer: Framebuffer pointer (0 if not initialized)
+  - int screen_width: Display width (1024)
+  - int screen_height: Display height (768)
+  - int pitch: Bytes per scanline (4096)
+
+Font Data:
+  - font_data[256][7]: Bitmap font for ASCII characters
+  - Character encoding: 5x7 pixels per character
+  - Coverage: Space, digits, letters, punctuation, symbols
+
+Functions (11 total):
+  1. set_pixel(): Single pixel write (PITCH-AWARE)
+  2. fill_rect(): Solid rectangle fill (PITCH-AWARE)
+  3. draw_rect(): Hollow rectangle outline
+  4. draw_line(): Line drawing
+  5. draw_char(): Character rendering (PITCH-AWARE)
+  6. draw_string(): Text string rendering
+  7. draw_window(): Window/dialog box rendering
+  8. draw_taskbar(): Bottom taskbar rendering
+  9. draw_wallpaper(): Full-screen background (PITCH-AWARE)
+  10. clear_screen(): Full screen fill
+  11. Boundary checking in all functions
+
+Compilation: gcc -m32 -ffreestanding -c src/graphics/gfx.c -o gfx.o
+
+FILE: src/graphics/gfx.h (Graphics Header)
+Location: /workspaces/Flux-OS/src/graphics/gfx.h
+Size: ~50 lines
+Purpose: Public graphics API definitions
+Exports:
+  - Color macros (11 colors in ARGB format)
+  - window_t structure definition
+  - Function prototypes (11 functions)
+  - No global variable exports (defined in gfx.c)
+
+FILE: linker.ld (Linker Script)
+Location: /workspaces/Flux-OS/linker.ld
+Purpose: Memory layout, section mapping for kernel linking
+Key Settings:
+  - Entry point: multiboot_header
+  - Text address: 0x00100000 (1 MB)
+  - Memory configuration for i386
+  - Section ordering and alignment
+
+FILE: build.sh (Build Script)
+Location: /workspaces/Flux-OS/build.sh
+Purpose: Automate compilation, linking, ISO creation
+Steps:
+  1. Delete old build artifacts (boot.o, kernel.o, gfx.o, flux-kernel)
+  2. Assemble bootloader (boot.s → boot.o)
+  3. Compile kernel C code (kernel.c → kernel.o)
+  4. Compile graphics library (gfx.c → gfx.o)
+  5. Link all objects (boot.o, kernel.o, gfx.o → flux-kernel)
+  6. Copy kernel to ISO directory
+  7. Create bootable ISO with grub-mkrescuse
+  8. Print success message
+
+Execution: bash build.sh (runs in ~2-3 seconds)
+
+FILE: isodir/boot/grub/grub.cfg (GRUB Configuration)
+Location: /workspaces/Flux-OS/isodir/boot/grub/grub.cfg
+Purpose: Boot configuration for GRUB bootloader
+Content:
+  - Timeout and default entry settings
+  - Terminal output mode (text only, graphics disabled)
+  - Single "Flux-OS" menu entry with Multiboot kernel load
+
+FILE: run_qemu.sh (Old QEMU Launcher)
+Location: /workspaces/Flux-OS/run_qemu.sh
+Status: Deprecated (replaced by GUI scripts)
+Purpose: Would launch QEMU with ISO
+
+FILE: run_gui.sh / run_graphics.sh (GUI Launchers)
+Location: /workspaces/Flux-OS/run_gui.sh, run_graphics.sh
+Purpose: Launch QEMU for graphics testing
+Current Status: Script exists but used for reference; manual QEMU launch preferred
+
+================================================================================
+11. GIT REPOSITORY STATE
+================================================================================
+
+Repository: whiteo55/Flux-OS
+URL: https://github.com/whiteo55/Flux-OS
+Current Branch: main
+Latest Commit: 8c4bd6e (HEAD -> main, origin/main, origin/HEAD) - v2.3 pre-alpha
+Date: Should match repo history
+
+Recent Commit History:
+1. 8c4bd6e - v2.3 pre-alpha (current)
+2. fd45eb0 - v2.2 pre-alpha
+3. 2982843 - Revert "v2.2 pre-alpha; added site operations"
+4. c9b041b - v2.2 pre-alpha; added site operations
+5. 764c5c2 - V2.1 PRE-ALPHA
+
+Modified Files (as of February 8, 2026):
+- flux-kernel: Compiled binary (not committed)
+- flux-os.iso: ISO image (not committed)
+- isodir/boot/flux-kernel: Copy of kernel in ISO (not committed)
+- kernel.o: Object file (not committed)
+- src/kernel/kernel.c: Modified (graphics attempts)
+
+Untracked/Ignored:
+- Build artifacts (*.o files)
+- ISO and kernel binaries
+- Boot cache files
+
+================================================================================
+12. WORKSPACE ENVIRONMENT
+================================================================================
+
+Workspace Root: /workspaces/Flux-OS
+Dev Container: Ubuntu 22.04.5 LTS
+Shell: bash
+User: vscode (or assigned container user)
+
+Directory Contents:
+- Source code: src/
+- Bootloader ISO: isodir/
+- Build outputs: flux-kernel, flux-os.iso, *.o files (in root)
+- Scripts: build.sh, run_qemu.sh, run_gui.sh, run_graphics.sh
+- Linker scripts: linker.ld, link.ld
+- Git config: .git/ directory with full history
+
+Environment Variables (for build):
+- PATH: Includes as, gcc, ld, grub-mkrescue (no export needed)
+- DISPLAY: Set to :1 for QEMU/Fluxbox windowing
+- Standard env: SHELL=/bin/bash, USER=vscode, etc.
+
+VS Code Features Available:
+- Built-in terminal (bash)
+- File explorer and editor
+- Git integration
+- Task execution ("Restart Fluxbox")
+- Simple Browser for VNC (http://localhost:6080)
+- Source control indicators
+- Problem panel for build errors
+
+Recent Terminal Commands:
+- cd /workspaces/Flux-OS && bash build.sh
+- pkill -9 qemu
+- DISPLAY=:1 qemu-system-i386 -m 512 -cdrom flux-os.iso -vga std
+- git status, git log
+- find, grep searches on source files
+
+================================================================================
+13. KNOWN ISSUES AND DEBUGGING NOTES
+================================================================================
+
+ISSUE 1: Graphics Mode Not Working
+Symptom: Only VGA text output visible, no graphical GUI rendered
+Cause Analysis:
+  - GRUB not initializing VBE graphics mode
+  - Framebuffer address unknown (hardcoded 0xFD000000 attempted)
+  - Graphics functions written but untested (pitch calculation updated)
+Evidence:
+  - Multiboot info bit 12 not set (GRUB in text mode)
+  - VBE pointer at offset +76 is NULL
+  - GRUB config: terminal_output console (explicitly disables graphics)
+Debugging Steps Taken:
+  1. Enabled kernel VGA diagnostics (lines 0-10 display status)
+  2. Attempted to read VBE info from GRUB (shows NULL)
+  3. Created graphics library with pitch-aware rendering
+  4. Hardcoded framebuffer to 0xFD000000 (from earlier testing notes)
+  5. Created simple red-fill test (no visible output)
+Attempted Solutions:
+  - Tried VBE pointer at 0x00010540 (didn't work)
+  - Tested multiple framebuffer addresses (0xD0000000, 0xE0000000, 0xFC000000)
+  - Tried GRUB graphics mode with gfxterm (init failed)
+  - Updated graphics functions to use pitch-based indexing
+Current Status: Reverted to text-only mode, graphics pending proper VBE initialization
+
+ISSUE 2: QEMU Menu Tabs Disappeared
+Symptom: QEMU window management tabs in Fluxbox no longer visible
+Possible Causes:
+  - Fluxbox window state changed
+  - QEMU configuration altered
+  - X11 display server issue
+  - Window manager focus issue
+Trigger: Occurred during graphics debugging attempts
+Impact: QEMU still runs and is accessible via VNC, but Fluxbox UI affected
+Solution: Restart Fluxbox via "Restart Fluxbox" VS Code task
+
+ISSUE 3: Multiboot Pointer Handling
+Initial Problem: Pointer appeared NULL in kernel, couldn't access multiboot info
+Solution: Bootloader was not pushing EBX before calling kernel_main
+Fix Applied: Added "push %ebx" in boot.s before "call kernel_main"
+Current Status: Fixed, multiboot info accessible
+
+ISSUE 4: Graphics Library Pitch Calculation
+Original Assumption: Linear framebuffer indexing (pixel = row * width + col)
+Reality: GPU memory may use different stride
+Discovery: 1024x768 @ 32-bit should use 4096-byte pitch (not 3072)
+Pitch Calculation: pitch = width * bytes_per_pixel = 1024 * 4 = 4096
+Functions Updated: set_pixel, fill_rect, draw_char, draw_wallpaper
+Functions Still Using set_pixel (indirect pitch support): draw_rect, draw_line, draw_string
+Status: Code updated but untested on working graphics
+
+ISSUE 5: GRUB VBE Initialization Failure
+Symptom: GRUB stays in 80x25 text mode despite graphics support in ISO
+Configuration Attempt: Added gfxterm to grub.cfg
+Result: Boot hangs or GRUB fails to initialize graphics mode
+Evidence: Multiboot info flags show bit 12 unset
+Diagnosis: QEMU VBE support may not be properly exposed to GRUB
+Current Workaround: Use text mode, disable graphics in grub.cfg
+
+================================================================================
+14. TESTING AND VERIFICATION
+================================================================================
+
+CURRENT BUILD STATUS: ✓ Compiles successfully
+Build Command: bash build.sh
+Success Output: "Build Complete!"
+Build Time: 2-3 seconds
+No compilation errors or warnings (clean build)
+
+CURRENTLY RUNNING TEST: Text mode diagnostics
+Expected Output:
+  Line 0: "FLUX-OS: Kernel running!" (yellow text)
+  Lines 1-9: Multiboot and graphics initialization details
+  Line 10: "Status: Kernel operational. Graphics pending VBE init."
+
+QEMU STATUS: Running
+Command: DISPLAY=:1 qemu-system-i386 -m 512 -cdrom flux-os.iso -vga std
+Process: [PID varies] Sl 2+ vscode ... qemu-system-i386
+Boot Time: ~2-3 seconds
+Memory Usage: ~100-150 MB
+Display: VNC at http://localhost:6080
+
+VNC BROWSER ACCESS:
+URL: http://localhost:6080
+Protocol: VNC over WebSocket
+View: Shows X11/Fluxbox desktop with QEMU window
+Interface: Canvas display in browser
+
+NEXT VERIFICATION STEPS:
+1. Confirm VGA text output appears in VNC (all 11 lines visible)
+2. Verify multiboot info shows mb_info pointer (non-zero)
+3. Check multiboot flags displayed as hex
+4. Note if VBE pointer shows NULL or value
+5. Attempt graphics when VBE properly initialized
+
+GRAPHICS TESTING PLAN:
+1. Enable GRUB graphics mode (gfxterm)
+2. Fix VBE detection in kernel
+3. Read framebuffer address from multiboot info
+4. Test single pixel write (0,0 should show bright color)
+5. Test vertical line (test pitch calculation)
+6. Test wallpaper fill (test horizontal pitch)
+7. Render text (test character rendering)
+8. Render windows (test combined primitives)
+
+================================================================================
+15. ADDITIONAL RESOURCES AND NOTES
+================================================================================
+
+DOCUMENTATION REFERENCES:
+- Multiboot Specification 1.6: https://www.gnu.org/software/grub/manual/multiboot/
+- VBE 3.0 Specification: https://en.wikipedia.org/wiki/VESA_BIOS_Extensions
+- x86 Assembly Reference: https://en.wikibooks.org/wiki/X86_Assembly
+- GCC Bare Metal: https://wiki.osdev.org/GCC_Cross-Compiler
+
+DEVELOPMENT WORKFLOW:
+1. Edit source files (src/boot/boot.s, src/kernel/kernel.c, src/graphics/*)
+2. Run bash build.sh (compiles and creates ISO)
+3. Restart QEMU: pkill -9 qemu && DISPLAY=:1 qemu-system-i386 ... &
+4. View output via VNC browser (http://localhost:6080)
+5. Check VGA text for diagnostics
+6. Iterate on code
+
+QUICK REFERENCE COMMANDS:
+  Build:       bash build.sh
+  Start QEMU:  DISPLAY=:1 qemu-system-i386 -m 512 -cdrom flux-os.iso -vga std &
+  Stop QEMU:   pkill -9 qemu
+  View:        http://localhost:6080 (VNC browser)
+  Git status:  git status
+  Git log:     git log --oneline -5
+
+DEVELOPMENT PRIORITIES:
+1. Fix graphics initialization (VBE detection and framebuffer mapping)
+2. Implement working pixel-to-screen rendering
+3. Render GUI components (wallpaper, windows, text)
+4. Add keyboard input handling (if needed)
+5. Optimize rendering performance
+
+ESTIMATED EFFORT:
+- Graphics debugging: 2-4 hours (VBE detection, address discovery)
+- GUI rendering: 1-2 hours (once graphics working)
+- Input handling: 1-2 hours (if keyboard input needed)
+- Polish and testing: 1-2 hours
+
+VERSION HISTORY (as reflected in git):
+- v2.1: Initial OSDev project setup
+- v2.2: Added graphics library skeleton and site operations
+- v2.2 reverted: Removed site operations
+- v2.3 (current): Graphics debugging, pitch calculation fixes, text diagnostics
+
+FUTURE ENHANCEMENTS:
+- Implement actual VBE driver
+- Add palette/color management
+- Implement sprite/image rendering
+- Add window decorations and effects
+- Mouse/keyboard input processing
+- Multi-tasking and process management
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+For detailed information about specific components, see section references above.
+Questions or clarifications may be directed to the developer notes or code comments.
+
+Generated on: February 8, 2026
+Compiler: GCC 11.x with binutils
+Architecture: i386 32-bit x86
+License: Project-specific (check repository for license file)

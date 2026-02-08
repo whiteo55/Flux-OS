@@ -13,6 +13,7 @@ typedef struct {
 extern uint32_t* framebuffer;
 extern int screen_width;
 extern int screen_height;
+extern int pitch;
 
 // Graphics function declarations
 extern void set_pixel(int x, int y, uint32_t color);
@@ -211,92 +212,75 @@ void kernel_main(multiboot_info_t* mb_info) {
         col = 0;
         
         if (vbe_raw == 0) {
-            const char* msg = "VBE pointer is NULL!";
+            const char* msg = "VBE pointer is NULL - using hardcoded values";
             for (int i = 0; msg[i]; i++) {
                 vga[row * 80 + col + i] = (uint16_t)msg[i] | ((uint16_t)0x0C << 8);
             }
-        // GRUB is in text mode, not graphics mode
-        // Use hardcoded QEMU framebuffer that we know works
-        row = 7;
-        col = 0;
-        const char* using_fb = "Using hardcoded QEMU framebuffer...";
-        for (int i = 0; using_fb[i]; i++) {
-            vga[row * 80 + col + i] = (uint16_t)using_fb[i] | ((uint16_t)0x0A << 8);
-        }
-        
-        // Known working values from testing
-        framebuffer = (uint32_t*)0xFD000000;
-        screen_width = 1024;
-        screen_height = 768;
-        uint16_t pitch = 1024 * 4;  // 1024 pixels * 4 bytes per pixel = 4096 bytes per scanline
-        
-        row = 8;
-        col = 0;
-        const char* fb_addr = "Framebuffer: 0xFD000000";
-        for (int i = 0; fb_addr[i]; i++) {
-            vga[row * 80 + col + i] = (uint16_t)fb_addr[i] | ((uint16_t)0x0A << 8);
-        }
-        
-        row = 9;
-        col = 0;
-        const char* dims = "Resolution: 1024x768";
-        for (int i = 0; dims[i]; i++) {
-            vga[row * 80 + col + i] = (uint16_t)dims[i] | ((uint16_t)0x0A << 8);
+            
+            // Fallback: hardcoded values
+            framebuffer = (uint32_t*)0xFD000000;
+            screen_width = 1024;
+            screen_height = 768;
+            pitch = 1024 * 4;
+            
+        } else {
+            // VBE is available! Read framebuffer address from it
+            vbe_mode_info_t* vbe_mode = (vbe_mode_info_t*)vbe_raw;
+            
+            const char* msg = "VBE pointer FOUND - reading from structure";
+            for (int i = 0; msg[i]; i++) {
+                vga[row * 80 + col + i] = (uint16_t)msg[i] | ((uint16_t)0x0A << 8);
+            }
+            
+            // Extract framebuffer address, width, height, pitch
+            framebuffer = (uint32_t*)(vbe_mode->physbase);
+            screen_width = vbe_mode->width;
+            screen_height = vbe_mode->height;
+            pitch = vbe_mode->pitch;
+            
+            row = 8;
+            col = 0;
+            const char* fb_info = "VBE Framebuffer: ";
+            for (int i = 0; fb_info[i]; i++) {
+                vga[row * 80 + col + i] = (uint16_t)fb_info[i] | ((uint16_t)0x0A << 8);
+            }
+            
+            // Print framebuffer address as hex
+            uint32_t fb_addr = (uint32_t)framebuffer;
+            const char hex_digits[] = "0123456789ABCDEF";
+            col = 17;
+            for (int i = 28; i >= 0; i -= 4) {
+                vga[row * 80 + col++] = (uint16_t)hex_digits[(fb_addr >> i) & 0xF] | ((uint16_t)0x0A << 8);
+            }
+            
+            row = 9;
+            col = 0;
+            const char* sz_info = "VBE Resolution: ";
+            for (int i = 0; sz_info[i]; i++) {
+                vga[row * 80 + col + i] = (uint16_t)sz_info[i] | ((uint16_t)0x0A << 8);
+            }
+            // Print width x height
+            col = 16;
+            uint16_t w = screen_width;
+            uint16_t h = screen_height;
+            vga[row * 80 + col++] = (uint16_t)('0' + (w / 1000)) | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)('0' + ((w / 100) % 10)) | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)('0' + ((w / 10) % 10)) | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)('0' + (w % 10)) | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)'x' | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)('0' + (h / 1000)) | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)('0' + ((h / 100) % 10)) | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)('0' + ((h / 10) % 10)) | ((uint16_t)0x0A << 8);
+            vga[row * 80 + col++] = (uint16_t)('0' + (h % 10)) | ((uint16_t)0x0A << 8);
         }
             
-            // Try to write one pixel - this should render the full GUI
-            if (framebuffer != 0) {
-                row = 10;
-                col = 0;
-                const char* rendering = "Rendering to framebuffer...";
-                for (int i = 0; rendering[i]; i++) {
-                    vga[row * 80 + col + i] = (uint16_t)rendering[i] | ((uint16_t)0x0A << 8);
-                }
-                
-                // Fill entire screen with a gradient blue color
-                uint32_t* row_ptr = framebuffer;
-                for (int y = 0; y < screen_height; y++) {
-                    uint32_t color = 0xFF110033 + (y << 8);  // Gradient
-                    for (int x = 0; x < screen_width; x++) {
-                        row_ptr[x] = 0xFF1a4d6d;  // Dark blue
-                    }
-                    // Move to next row using pitch
-                    row_ptr = (uint32_t*)((uint8_t*)row_ptr + pitch);
-                }
-                
-                // Draw wallpaper with proper pitch
-                draw_wallpaper();
-                
-                // Create and render a window
-                window_t win = {
-                    .x = 50,
-                    .y = 50,
-                    .width = 300,
-                    .height = 200,
-                    .flags = 0,
-                    .bg_color = 0xFF3366CC,
-                    .border_color = 0xFF0000FF,
-                    .title = "Flux-OS GUI"
-                };
-                draw_window(&win);
-                
-                // Draw text
-                draw_string(60, 70, "GUI Successfully Rendered!", 0xFFFFFFFF, 0xFF3366CC);
-                draw_taskbar(0xFF1a1a1a);
-                
-                row = 11;
-                col = 0;
-                const char* success = "GUI COMPLETE!";
-                for (int i = 0; success[i]; i++) {
-                    vga[row * 80 + col + i] = (uint16_t)success[i] | ((uint16_t)0x0A << 8);
-                }
-            } else {
-                row = 12;
-                col = 0;
-                const char* fail = "ERROR: Invalid framebuffer, width, or height!";
-                for (int i = 0; fail[i]; i++) {
-                    vga[row * 80 + col + i] = (uint16_t)fail[i] | ((uint16_t)0x0C << 8);
-                }
+            // Graphics initialization attempted but QEMU VBE not initialized by GRUB
+            // Text mode diagnostics complete
+            row = 10;
+            col = 0;
+            const char* status = "Status: Kernel operational. Graphics pending VBE init.";
+            for (int i = 0; status[i]; i++) {
+                vga[row * 80 + col + i] = (uint16_t)status[i] | ((uint16_t)0x0A << 8);
             }
         }
     }

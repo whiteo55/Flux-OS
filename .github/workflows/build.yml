@@ -1,0 +1,58 @@
+name: FLUX-OS Build Pipeline
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # Allows you to run this manually from the Actions tab
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential nasm grub-pc-bin xorriso qemu-system-x86
+    
+    - name: Verify Build Environment
+      run: |
+        echo "Checking GCC version..."
+        gcc --version
+        echo "Checking QEMU version..."
+        qemu-system-i386 --version
+
+    - name: Build Flux-OS
+      run: |
+        echo "Running build script..."
+        chmod +x build.sh
+        bash build.sh
+        echo "Build Complete!"
+
+    - name: Verify ISO Output
+      run: |
+        if [ ! -f "flux-os.iso" ]; then
+          echo "Error: ISO file was not created!"
+          exit 1
+        fi
+        echo "ISO generated successfully."
+        ls -lh flux-os.iso
+
+    - name: Upload ISO Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: flux-os-dev-build
+        path: flux-os.iso
+        retention-days: 30 # Keeps the build for 30 days
+
+    - name: Upload Kernel Binary (for debugging)
+      uses: actions/upload-artifact@v4
+      with:
+        name: flux-kernel-binary
+        path: flux-kernel
+        retention-days: 30

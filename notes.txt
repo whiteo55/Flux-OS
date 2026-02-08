@@ -1,0 +1,292 @@
+FLUX-OS DEVELOPMENT NOTES
+=========================
+Last Updated: February 8, 2026
+
+IMMEDIATE STATUS
+================
+✓ Kernel compiles and boots successfully
+✓ Multiboot handoff working (mb_info accessible)
+✓ VGA text diagnostics functioning (11-line display)
+✓ Graphics library created (pitch-aware functions)
+✗ Graphics rendering not working (framebuffer write fails)
+✗ QEMU window tabs missing (likely Fluxbox issue)
+
+CRITICAL ISSUE: Graphics Not Displaying
+========================================
+Current Behavior: Only VGA text mode visible, no pixels rendered
+Root Cause: 
+  1. GRUB not initializing VBE graphics mode (stays in 80x25 text)
+  2. Framebuffer address unknown (attempted hardcode 0xFD000000 failed)
+  3. Graphics functions written but untested
+
+Evidence:
+  - Multiboot info bit 12 = 0 (no graphics info from GRUB)
+  - VBE pointer at offset +76 = NULL
+  - GRUB config: terminal_output console (graphics disabled)
+  - Test write to 0xFD000000: No visible output
+
+GRAPHICS DEBUGGING CHECKLIST
+=============================
+[ ] Step 1: Enable GRUB graphics mode
+    - Modify isodir/boot/grub/grub.cfg
+    - Change "terminal_output console" to appropriate graphics mode
+    - Common options: "gfxterm", "graphicsterm", or remove line
+    - Test: Build and check if GRUB displays graphical menu
+
+[ ] Step 2: Verify VBE detection
+    - Check if bit 12 in multiboot flags becomes set
+    - Check if VBE pointer at +76 is non-NULL
+    - If still NULL, VBE not initialized by GRUB
+
+[ ] Step 3: Determine correct framebuffer address
+    - Options to try:
+      a) Read from multiboot info (vbe_mode_info_t.physbase)
+      b) Query QEMU via serial port
+      c) Use QEMU's documented framebuffer address
+      d) Try common addresses: 0xA0000, 0xC0000, 0xD0000, 0xE0000, 0xF0000
+    - Test each with simple pixel write test
+
+[ ] Step 4: Verify color format
+    - Confirmed: ARGB 32-bit (0xAARRGGBB)
+    - Top byte: Alpha (0xFF = opaque)
+    - Test color: 0xFFFF0000 (bright red) should be clear on black
+
+[ ] Step 5: Verify pitch calculation
+    - For 1024x768@32-bit: pitch = 1024 pixels * 4 bytes = 4096 bytes
+    - Code already updated: row = (uint32_t*)((uint8_t*)framebuffer + y * pitch)
+    - Should be correct if framebuffer address valid
+
+[ ] Step 6: Test simple graphics
+    - Fill entire screen with solid color (0xFFFF0000 = red)
+    - If visible: Framebuffer working, test other functions
+    - If not visible: Framebuffer address or pitch wrong
+
+NEXT ACTIONS (PRIORITY ORDER)
+==============================
+1. Fix GRUB Graphics Mode
+   File: isodir/boot/grub/grub.cfg
+   Try: Uncomment/add graphics mode directive
+   Test: Build and observe GRUB menu appearance
+
+2. Add VBE Detection in Kernel
+   File: src/kernel/kernel.c
+   TODO: Read vbe_mode_info_t structure from multiboot
+   Extract: physbase (framebuffer), pitch, width, height
+   Fallback: Hardcode only if VBE detection fails
+
+3. Implement Progressive Graphics Testing
+   - Test 1: Fill one scanline with color
+   - Test 2: Fill entire screen
+   - Test 3: Draw grid pattern (test pitch)
+   - Test 4: Draw text characters
+   - Test 5: Render full GUI
+
+4. Document Working Configuration
+   - Once graphics work, save configuration
+   - Create reference implementation
+   - Document framebuffer address and pitch
+
+CODE QUALITY NOTES
+==================
+Current State:
+  - Boot code: Clean, working correctly
+  - Kernel main: Working, extensive diagnostics
+  - Graphics library: Implemented but untested
+  - Functions updated for pitch awareness: 5/11
+  - Remaining functions: Indirect pitch support via set_pixel
+
+Technical Debt:
+  - Graphics functions not fully tested
+  - No error handling in graphics functions (check framebuffer pointer)
+  - No bounds checking for drawing operations
+  - Font is basic (5x7, ASCII only)
+  - No double buffering or vsync
+
+QEMU WINDOW ISSUES
+==================
+Symptom: Fluxbox window tabs disappeared
+Impact: QEMU still accessible via VNC, but UI degraded
+Recovery:
+  1. Restart Fluxbox: VS Code "Restart Fluxbox" task
+  2. Kill and restart QEMU: pkill -9 qemu
+  3. Relaunch: DISPLAY=:1 qemu-system-i386 -m 512 -cdrom flux-os.iso -vga std &
+  4. Access: http://localhost:6080
+
+Build System Notes
+==================
+Build Script: build.sh
+  - Automates: assembly → compilation → linking → ISO creation
+  - Time: ~2-3 seconds per build
+  - Output: flux-os.iso (bootable)
+  - No build configuration needed (all hardcoded correctly)
+
+Compilation Flags:
+  - -m32: 32-bit target (i386)
+  - -ffreestanding: Bare metal (no runtime support)
+  - No optimization flags (-O0 implicit, could add -O2 if desired)
+
+Linker Script: linker.ld
+  - Defines memory layout and section ordering
+  - Entry point: multiboot_header at 0x00100000
+  - Appears correct, no issues observed
+
+Testing Workflow
+================
+Current Test: VGA text diagnostics
+  Run: bash build.sh && pkill -9 qemu; DISPLAY=:1 qemu-system-i386 -m 512 -cdrom flux-os.iso -vga std &
+  View: http://localhost:6080
+  Check: 11 VGA text lines visible with status information
+
+Proposed Tests:
+  1. Graphics startup test (enable VBE, check flags)
+  2. Framebuffer address test (try different addresses)
+  3. Pixel write test (single pixel color)
+  4. Pattern test (fill screen with solid color)
+  5. Line test (draw horizontal/vertical lines)
+  6. Text test (render characters)
+  7. Window test (render complete GUI)
+
+Git Workflow
+============
+Repository: whiteo55/Flux-OS
+Current: main branch, up to date with origin
+Staged: None (all changes uncommitted)
+Modified: src/kernel/kernel.c (graphics attempts), compile artifacts
+Untracked: flux-kernel, flux-os.iso, *.o files (build outputs)
+
+Suggested Commits:
+  After graphics fixed: "Feature: Graphics initialization and rendering"
+  After UI complete: "Feature: Complete GUI with windows and text"
+
+Performance Notes
+=================
+QEMU Settings:
+  - RAM: 512 MB (adequate for test kernel)
+  - CPU: Single-threaded (default)
+  Possible optimizations:
+    - Add -cpu host for faster execution
+    - Add -enable-kvm if available
+
+Kernel Performance:
+  - No fancy optimizations needed at this stage
+  - Current focus: Functionality over speed
+  - Once features working: Can optimize rendering
+
+Common Issues and Solutions
+============================
+Issue: Build fails with error about linker script
+Solution: Verify linker.ld exists and path is correct in build.sh
+
+Issue: QEMU won't start
+Solution: pkill -9 qemu, ensure DISPLAY=:1, check ISO exists
+
+Issue: VNC won't connect
+Solution: Restart Fluxbox, verify X11 server running, check port 6080
+
+Issue: Graphics still not working after VBE fix
+Solution: Add more diagnostics to kernel, verify multiboot info
+  Additional debugging: Print VBE mode number, pitch, width, height from multiboot
+
+Issue: Text wrapping or corruption in VGA buffer
+Solution: Check 80 * 25 buffer size, ensure column calculations correct
+
+Debugging Techniques
+====================
+1. VGA Text Diagnostics (current method)
+   - Write to 0xB8000 with colored text
+   - Can display up to 80x25 characters
+   - Low overhead, always available in text mode
+
+2. Serial Port Output (not yet implemented)
+   - Could add serial debug output
+   - Requires QEMU serial option and kernel serial driver
+   - Useful for continuous logging
+
+3. Assertion/Panic Handler (not yet implemented)
+   - Add simple abort() function
+   - Could cause keyboard interrupt or hang with message
+   - Useful for error cases
+
+Architecture Decisions
+=====================
+Choice 1: Multiboot 1 vs Multiboot 2
+Decision: Multiboot 1 (legacy but simpler)
+Reason: GRUB 2 supports both, Multiboot 1 adequate for features
+
+Choice 2: 32-bit vs 64-bit
+Decision: 32-bit (i386)
+Reason: Simpler for learning, QEMU supports well, VBE designed for x86
+
+Choice 3: Text mode vs Graphics mode
+Decision: Start with text (working), add graphics when needed
+Reason: Graphics complex due to VBE initialization, text mode simpler
+
+Choice 4: Pitch-based vs Linear framebuffer indexing
+Decision: Pitch-based (correct for real hardware)
+Reason: Matches GPU memory layout, required for proper pixel placement
+
+Future Enhancement Ideas
+========================
+Near term (1-2 weeks):
+  - Fix graphics rendering
+  - Render wallpaper and GUI windows
+  - Add text rendering to screen
+  - Implement simple menu
+
+Medium term (1-2 months):
+  - Add keyboard input handling
+  - Implement simple shell
+  - Add file system support
+  - Optimize graphics rendering
+
+Long term (3+ months):
+  - Multi-tasking support
+  - Virtual memory management
+  - Device drivers (disk, network)
+  - Full featured OS
+
+References and Resources
+========================
+- Flux-OS GitHub: https://github.com/whiteo55/Flux-OS
+- message.txt: Comprehensive project documentation
+- OSDev.org: https://wiki.osdev.org/ (excellent OS development resource)
+- GRUB Manual: https://www.gnu.org/software/grub/manual/
+- Multiboot Spec: https://www.gnu.org/software/grub/manual/multiboot/
+- x86 Assembly: https://en.wikibooks.org/wiki/X86_Assembly
+
+Contact and Support
+===================
+For this project:
+  - Developer: whiteo55
+  - Repository: https://github.com/whiteo55/Flux-OS
+  - Issues: GitHub Issues tracker
+  
+For development questions:
+  - OSDev forums: https://forum.osdev.org/
+  - Stack Overflow: Tag [os-development]
+  - Reddit: r/osdev
+
+Change Log
+==========
+February 8, 2026:
+  - Attempted graphics framebuffer rendering (failed)
+  - Updated graphics library for pitch-aware calculations
+  - Fixed kernel to use global pitch variable
+  - Reverted to text-only mode after graphics test failed
+  - Created comprehensive documentation (message.txt, notes.txt)
+  - Issue: QEMU window tabs disappeared (Fluxbox state issue)
+  - Status: Kernel operational, graphics pending VBE initialization
+
+NEXT SESSION STARTING POINT
+============================
+1. Check VGA text output in VNC browser
+2. Enable GRUB graphics mode in grub.cfg
+3. Rebuild and test if VBE flags are set in multiboot info
+4. If VBE available: Extract framebuffer address and pitch from multiboot
+5. If VBE not available: Investigate QEMU -vga options and GRUB configuration
+6. Once framebuffer accessible: Test simple pixel writes
+7. Progressive testing: single pixel → lines → shapes → text → GUI
+
+========================================
+END OF DEVELOPMENT NOTES
+========================================
