@@ -1,0 +1,13 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Restart Fluxbox",
+            "type": "shell",
+            "command": "DISPLAY=:1 fluxbox -restart",
+            "presentation": {
+                "reveal": "always"
+            }
+        }
+    ]
+}

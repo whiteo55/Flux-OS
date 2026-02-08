@@ -1,0 +1,21 @@
+{
+  "name": "fluxbox-restart",
+  "displayName": "Fluxbox Restart",
+  "description": "Quick button to restart Fluxbox",
+  "version": "0.0.1",
+  "engine": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "fluxbox.restart",
+        "title": "Restart Fluxbox"
+      }
+    ]
+  }
+}
