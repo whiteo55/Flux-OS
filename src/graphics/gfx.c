@@ -1,4 +1,5 @@
 #include "gfx.h"
+#include "../gui/gui.h"
 
 // Define global framebuffer state here
 uint32_t* framebuffer = 0;

@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flux-OS | Nothing Desktop Experience</title>
+    <meta name="description" content="FLUX-OS: A 32-bit, hobbyist operating system written from scratch. Minimalist, typography-driven, and philosophically bare metal.">
+
+    <!-- Fonts: Loading LOCAL NDOT.otf and NTYPE.otf -->
+    <link rel="preload" href="NDOT.otf" as="font" type="font/otf" crossorigin>
+    <link rel="preload" href="NTYPE.otf" as="font" type="font/otf" crossorigin>
+
+    <style>
+        /* 
+         * DESIGN SYSTEM & VARIABLES 
+         * Based on Nothing Design Guidelines
+         */
+        :root {
+            /* Colors */
+            --bg-color: #000000;
+            --surface-color: #111111;
+            --text-primary: #FFFFFF;
+            --text-secondary: #888888;
+            --accent-red: #FF3B30;
+            --border-color: #333333;
+            --dot-color: #222222;
+            --dot-active: #555555;
+            --badge-bg: #1a1a1a;
+
+            /* Fonts - Local Only */
+            --font-display: 'NDOT', 'Courier New', monospace;
+            --font-body: 'NTYPE', 'Helvetica Neue', Arial, sans-serif;
+
+            /* Layout */
+            --container-width: 1200px;
+            --border-radius: 12px;
+        }
+
+        /* Light Mode Overrides */
+        body.light-mode {
+            --bg-color: #F2F2F2;
+            --surface-color: #FFFFFF;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --accent-red: #FF0000;
+            --border-color: #DDDDDD;
+            --dot-color: #E0E0E0;
+            --dot-active: #CCCCCC;
+            --badge-bg: #E8E8E8;
+        }
+
+        /* SCROLLBAR (Feature 4) */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-red); 
+            border-radius: 3px;
+        }
+
+        /* RESET & BASE STYLES */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            line-height: 1.7;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Font Face Declarations - LOCAL FILES */
+        @font-face {
+            font-family: 'NDOT';
+            src: url('NDOT.otf') format('opentype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'NTYPE';
+            src: url('NTYPE.otf') format('opentype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        /* UTILITIES */
+        .container {
+            max-width: var(--container-width);
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        .dot-text {
+            font-family: var(--font-display);
+            letter-spacing: 2px;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+            color: var(--text-secondary);
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        code {
+            background-color: var(--border-color);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: var(--accent-red);
+        }
+
+        /* DOT BACKGROUND GRID */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
+            background-size: 20px 20px;
+            pointer-events: none;
+        }
+
+        /* HEADER / NAV */
+        header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            background: rgba(var(--bg-color), 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.3s;
+        }
+        
+        @media (max-width: 768px) {
+            header { padding: 0 20px; }
+        }
+
+        header.scrolled {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo {
+            font-family: var(--font-display);
+            font-size: 1.2rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: default;
+        }
+
+        .logo-dot {
+            width: 12px;
+            height: 12px;
+            background-color: var(--accent-red);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            cursor: pointer; /* Hint that it's clickable */
+            transition: transform 0.1s;
+        }
+        
+        .logo-dot:active {
+            transform: scale(0.8);
+        }
+
+        nav ul {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+            padding: 0;
+        }
+
+        nav a {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--text-primary);
+        }
+
+        /* FEATURE 3: SYSTEM CLOCK */
+        .sys-clock {
+            font-family: var(--font-display);
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-right: 20px;
+            display: none; /* Hidden on mobile by default */
+        }
+
+        @media (min-width: 769px) {
+            .sys-clock { display: block; }
+        }
+
+        .theme-toggle {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: var(--font-display);
+            font-size: 0.8rem;
+            border-radius: 20px;
+            transition: all 0.3s;
+        }
+
+        /* HERO SECTION */
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero-content-wrapper {
+            max-width: 800px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hero h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 5vw, 4rem);
+            line-height: 1.2;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+            position: relative;
+            display: inline-block;
+            white-space: pre-wrap; /* Allows the typing effect to respect newlines */
+        }
+
+        /* FEATURE 5: GLITCH EFFECT */
+        .glitch-hover:hover {
+            animation: glitch-anim 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+            color: var(--text-primary);
+        }
+
+        .glitch-hover::before,
+        .glitch-hover::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color);
+        }
+
+        .glitch-hover::before {
+            left: 2px;
+            text-shadow: -1px 0 var(--accent-red);
+            clip: rect(44px, 450px, 56px, 0);
+            animation: glitch-anim-2 5s infinite linear alternate-reverse;
+        }
+
+        .glitch-hover::after {
+            left: -2px;
+            text-shadow: -1px 0 blue;
+            clip: rect(44px, 450px, 56px, 0);
+            animation: glitch-anim-3 5s infinite linear alternate-reverse;
+        }
+
+        @keyframes glitch-anim {
+            0% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); }
+            80% { transform: translate(2px, -2px); }
+            100% { transform: translate(0); }
+        }
+
+        .hero p {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            margin: 0 auto 48px auto;
+            line-height: 1.6;
+        }
+
+        /* Badges */
+        .badges-container {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            padding-top: 150px; /* Increased to 150px */
+            margin-bottom: 30px;
+        }
+
+        .badge {
+            font-family: var(--font-display);
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background-color: var(--badge-bg);
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge span.label { color: var(--text-secondary); }
+        .badge span.value { font-weight: bold; }
+        .badge.version span.value { color: #FF9900; }
+        .badge.language span.value { color: #3366CC; }
+        .badge.status span.value { color: #FF3B30; }
+        .badge.license span.value { color: #00BFA5; }
+
+        .cta-button {
+            background-color: transparent;
+            border: 1px solid var(--text-primary);
+            color: var(--text-primary);
+            padding: 16px 32px;
+            font-family: var(--font-display);
+            text-transform: uppercase;
+            font-size: 1rem;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: color 0.3s;
+            display: inline-block;
+        }
+
+        .cta-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0%;
+            height: 100%;
+            background-color: var(--text-primary);
+            z-index: -1;
+            transition: width 0.3s ease;
+        }
+
+        .cta-button:hover {
+            color: var(--bg-color);
+        }
+
+        .cta-button:hover::before {
+            width: 100%;
+        }
+
+        /* GLYPH ANIMATION */
+        .glyph-wrapper {
+            margin-top: 60px;
+            width: 200px;
+            height: 200px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .glyph-ring {
+            position: absolute;
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+        }
+
+        .g1 { width: 100%; height: 100%; border-style: dashed; animation: spin 20s linear infinite; }
+        .g2 { width: 80%; height: 80%; border-color: var(--text-secondary); animation: spin-rev 15s linear infinite; }
+        .g3 { width: 60%; height: 60%; border: 1px dotted var(--accent-red); }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes spin-rev { 100% { transform: rotate(-360deg); } }
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(0.95); }
+            50% { opacity: 1; transform: scale(1.05); }
+            100% { opacity: 0.5; transform: scale(0.95); }
+        }
+
+        /* SECTIONS */
+        section {
+            padding: 100px 0;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .section-header {
+            margin-bottom: 60px;
+        }
+
+        .section-header h2 {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+
+        .section-header .line {
+            width: 60px;
+            height: 2px;
+            background-color: var(--accent-red);
+        }
+
+        /* TEXT CONTENT STYLING */
+        .content-block {
+            max-width: 800px;
+            margin-bottom: 40px;
+        }
+
+        .content-block h3 {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            margin: 30px 0 15px 0;
+            color: var(--text-primary);
+        }
+
+        .content-block h4 {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            margin: 20px 0 10px 0;
+            color: var(--text-primary);
+            text-transform: uppercase;
+        }
+
+        .content-block p {
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        /* PROJECT STRUCTURE TREE */
+        .project-structure {
+            background-color: var(--surface-color);
+            padding: 24px;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            font-family: 'Courier New', monospace;
+            color: var(--text-secondary);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: baseline;
+            white-space: nowrap;
+        }
+
+        .tree-indent {
+            width: 24px; /* Indentation width */
+            flex-shrink: 0;
+        }
+
+        .tree-icon {
+            margin-right: 8px;
+            user-select: none;
+        }
+
+        .tree-name {
+            color: var(--text-secondary);
+        }
+        
+        .tree-name.folder {
+            color: var(--text-primary);
+            font-weight: bold;
+        }
+
+        .known-issues li {
+            list-style-type: square;
+            color: var(--accent-red);
+        }
+        
+        .known-issues li span {
+            color: var(--text-secondary);
+        }
+
+        /* LICENSE SECTION */
+        .license-box {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            padding: 40px;
+            border-radius: var(--border-radius);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .license-box h2 {
+            font-family: var(--font-display);
+            margin-bottom: 20px;
+        }
+
+        .license-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .license-text p {
+            margin-bottom: 12px;
+        }
+
+        /* FOOTER */
+        footer {
+            padding: 60px 0;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 40px;
+            font-size: 0.9rem;
+        }
+
+        .footer-links a:hover {
+            color: var(--accent-red);
+        }
+
+        .copyright {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 768px) {
+            nav ul { display: none; }
+            .hero h1 { font-size: 2.5rem; }
+            .badges-container { 
+                flex-direction: column; 
+                align-items: center;
+                padding-top: 50px; /* Slightly less padding on mobile */
+            }
+        }
+
+        /* KERNEL PANIC OVERLAY (Feature 1) */
+        #kernel-panic {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000000;
+            color: #FFFFFF;
+            z-index: 9999;
+            font-family: 'Courier New', monospace;
+            padding: 40px;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .panic-title {
+            color: var(--accent-red);
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--accent-red);
+            padding-bottom: 10px;
+            width: fit-content;
+        }
+
+        .panic-text {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-grid"></div>
+
+    <!-- Kernel Panic Overlay -->
+    <div id="kernel-panic">
+        <div class="panic-title">KERNEL PANIC</div>
+        <div class="panic-text">FLUX-OS has encountered a critical error and must terminate.</div>
+        <div class="panic-text">Error Code: 0x00000000 (USER_INTERFERENCE)</div>
+        <div class="panic-text" style="margin-top: 20px; color: #888;">Dumping physical memory...</div>
+        <div class="panic-text" id="panic-dump">0x00000000</div>
+    </div>
+
+    <header id="header">
+        <a href="#" class="logo">
+            <div class="logo-dot" id="logoDot" title="Do not click me 3 times"></div>
+            <span class="glitch-hover" data-text="FLUX-OS">FLUX-OS</span>
+        </a>
+        <nav>
+            <ul>
+                <li><a href="#status">Status</a></li>
+                <li><a href="#vision">Vision</a></li>
+                <li><a href="#build">Build</a></li>
+                <li><a href="#license">License</a></li>
+            </ul>
+        </nav>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <div class="sys-clock" id="sysClock">00:00:00</div>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle Theme">
+                Light Mode
+            </button>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container hero-content-wrapper">
+            <!-- CSS Badges simulating README shields -->
+            <div class="badges-container">
+                <div class="badge version"><span class="label">VERSION:</span> <span class="value">2.3-PRE-ALPHA</span></div>
+                <div class="badge language"><span class="label">LANGUAGE:</span> <span class="value">C + ASSEMBLY</span></div>
+                <div class="badge status"><span class="label">STATUS:</span> <span class="value">TEXT-MODE</span></div>
+                <div class="badge license"><span class="label">LICENSE:</span> <span class="value">PROPRIETARY</span></div>
+            </div>
+
+            <!-- Feature 2: Typing Effect Target -->
+            <h1 class="dot-text glitch-hover" id="heroTitle" data-text=""></h1>
+            <p>A 32-bit, hobbyist operating system written from scratch in C and x86 Assembly. It aims to be a "Nothing OS" inspired desktop environment—minimalist, typography-driven, and philosophically bare metal.</p>
+            
+            <a href="https://github.com/whiteo55/Flux-OS" target="_blank" class="cta-button">View Source Code</a>
+
+            <div class="glyph-wrapper">
+                <div class="glyph-ring g1"></div>
+                <div class="glyph-ring g2"></div>
+                <div class="glyph-ring g3"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Status Section -->
+    <section id="status">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="dot-text">CURRENT STATUS</h2>
+                <div class="line"></div>
+            </div>
+            <div class="content-block">
+                <p><strong>Version:</strong> 2.3 Pre-Alpha<br>
+                <strong>Kernel:</strong> Operational<br>
+                <strong>Graphics:</strong> Text Mode Only (VBE Pending)</p>
+                <br>
+                <p>The system boots successfully via GRUB into a protected-mode kernel. It currently displays diagnostic information via VGA text (80x25). The graphics library (GFX) is implemented but awaiting VESA BIOS Extensions (VBE) initialization to switch to a graphical framebuffer.</p>
+
+                <h3>Development Roadmap</h3>
+                <ul>
+                    <li><strong>Phase 1: Bootstrapping (Complete)</strong> — Custom Assembly Bootloader (Multiboot v1), Protected Mode Transition, GDT and Basic Memory Management.</li>
+                    <li><strong>Phase 2: Kernel Core (Complete)</strong> — C Kernel Entry Point, VGA Text Driver, Multiboot Info Parsing.</li>
+                    <li><strong>Phase 3: Graphics System (In Progress)</strong> — VESA BIOS Extensions (VBE) Driver, Framebuffer Memory Mapping, Software Rendering Library (GFX).</li>
+                    <li><strong>Phase 4: User Interface (Planned)</strong> — Desktop Environment (FluxWM), Window Management, Taskbar and System Tray.</li>
+                    <li><strong>Phase 5: Hardware Interaction (Future)</strong> — PS/2 Keyboard Driver, Serial Mouse Driver, PIT/RTC Timer.</li>
+                </ul>
+
+                <h3>Known Issues</h3>
+                <ul class="known-issues">
+                    <li><strong>VBE Initialization Failure:</strong> <span>The kernel cannot currently retrieve the framebuffer address from GRUB. The <code>mb_info->vbe_mode_info</code> pointer is returning NULL. This forces the OS to fall back to VGA text mode (80x25).</span></li>
+                    <li><strong>QEMU Graphics:</strong> <span>Hardcoding framebuffer addresses (e.g., <code>0xFD000000</code>) has not yielded visual results. The VBE protocol handshake needs debugging.</span></li>
+                    <li><strong>Memory Layout:</strong> <span>The linker script assumes a 1MB load address. If GRUB loads the kernel higher due to high memory maps, the kernel may panic.</span></li>
+                    <li><strong>Interrupts:</strong> <span>The IDT (Interrupt Descriptor Table) is currently empty. Any interrupt or exception will cause a Triple Fault and reboot.</span></li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Vision Section -->
+    <section id="vision">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="dot-text">VISION</h2>
+                <div class="line"></div>
+            </div>
+            <div class="content-block">
+                <p>To create a desktop experience that feels like a digital instrument cluster. No bloat. No clutter. Just raw interaction between user and machine.</p>
+                
+                <h3>Design Philosophy</h3>
+                <p><strong>1. Minimalism over Convenience:</strong> We prioritize raw code efficiency and resource speed over user hand-holding. The OS should feel like a tool for experts, not a toy for the masses.</p>
+                <p><strong>2. Typography as UI:</strong> The interface is driven by a custom bitmap font system. The screen is a canvas for text and geometry, not stock icons and heavy assets.</p>
+                <p><strong>3. Bare Metal Truth:</strong> FLUX-OS does not hide the hardware. It exposes the Multiboot memory maps, the framebuffer addresses, and the interrupt descriptor tables to the user (if they dare to look).</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Build Section -->
+    <section id="build">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="dot-text">BUILD INSTRUCTIONS</h2>
+                <div class="line"></div>
+            </div>
+            <div class="content-block">
+                <h3>Requirements</h3>
+                <ul>
+                    <li><strong>OS:</strong> Linux (Ubuntu 22.04 LTS recommended)</li>
+                    <li><strong>Compiler:</strong> GCC (with <code>i386</code> multilib support)</li>
+                    <li><strong>Assembler:</strong> GNU Assembler (GAS)</li>
+                    <li><strong>Linker:</strong> GNU Linker (LD)</li>
+                    <li><strong>Bootloader:</strong> GRUB 2 (via <code>grub-mkrescue</code>)</li>
+                    <li><strong>Emulator:</strong> QEMU (for testing)</li>
+                </ul>
+
+                <h3>Quick Start</h3>
+                <pre style="background: var(--surface-color); padding: 15px; border-radius: 8px; color: var(--text-primary); overflow-x: auto; border: 1px solid var(--border-color);">
+# Clone the repository
+git clone https://github.com/whiteo55/Flux-OS.git
+cd Flux-OS
+
+# Build the Operating System
+bash build.sh
+
+# Run in QEMU (Requires X11 Display)
+DISPLAY=:1 qemu-system-i386 -m 512 -cdrom flux-os.iso -vga std</pre>
+
+                <h3>Project Structure</h3>
+                <!-- Flexbox Tree Structure for better alignment -->
+                <div class="project-structure">
+                    <div class="tree-item"><span class="tree-name folder">Flux-OS/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><span class="tree-name folder">src/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-name folder">boot/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-icon">|</span><span class="tree-name">Assembly bootloader...</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-icon">|</span><span class="tree-name">boot.s</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-name folder">kernel/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-icon">|</span><span class="tree-name">Main kernel logic...</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-icon">|</span><span class="tree-name">kernel.c</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-name folder">graphics/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-icon">|</span><span class="tree-name">Software rendering...</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-icon">|</span><span class="tree-name">gfx.c</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-icon">|</span><span class="tree-name">gfx.h</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><span class="tree-name folder">isodir/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-name folder">boot/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-name folder">grub/</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-name">grub.cfg</span></div>
+                    <div class="tree-item"><div class="tree-indent"></div><div class="tree-indent"></div><div class="tree-indent"></div><span class="tree-name">flux-kernel</span></div>
+                    <div class="tree-item"><span class="tree-name">build.sh</span></div>
+                    <div class="tree-item"><span class="tree-name">linker.ld</span></div>
+                    <div class="tree-item"><span class="tree-name">LICENSE.md</span></div>
+                    <div class="tree-item"><span class="tree-name">README.md</span></div>
+                </div>
+
+                <h3>Key Components</h3>
+                <p><strong>boot.s:</strong> Sets up the Multiboot header, switches to 32-bit Protected Mode, sets up a stack, and jumps to <code>kernel_main</code>.</p>
+                <p><strong>kernel.c:</strong> Parses the Multiboot info structure provided by GRUB. Handles the switch from text to graphics mode.</p>
+                <p><strong>gfx.c:</strong> A software rasterizer. All drawing (pixels, lines, rectangles, text) is calculated by the CPU and written directly to the framebuffer.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Community -->
+    <section id="community">
+        <div class="container" style="text-align: center;">
+            <h2 class="dot-text" style="margin-bottom:20px;">GET IN TOUCH</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 40px; max-width: 600px; margin-left: auto; margin-right: auto;">
+                Since this is a solo heavy WIP, we don't have a project server yet. 
+                Feel free to DM the creator directly or check the code on GitHub.
+            </p>
+            <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                <a href="https://github.com/whiteo55/Flux-OS" target="_blank" class="cta-button">
+                    GitHub Repo
+                </a>
+                <a href="https://discord.com/users/oliverlebaigue" target="_blank" class="cta-button" style="border-color: var(--border-color); color: var(--text-secondary);">
+                    DM @oliverlebaigue
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- License Section -->
+    <section id="license">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="dot-text">LICENSE AGREEMENT</h2>
+                <div class="line"></div>
+            </div>
+            <div class="license-box">
+                <h2>FLUX-OS PROPRIETARY SOFTWARE LICENSE AGREEMENT</h2>
+                <p><strong>Version:</strong> 1.0<br>
+                <strong>Date:</strong> February 8, 2026<br>
+                <strong>Licensors:</strong> Oliver Lebaigue</p>
+                <br>
+                <div class="license-text">
+                    <p><strong>1. PREAMBLE</strong><br>
+                    This License Agreement ("Agreement") is a legal agreement between you ("Licensee") and Oliver Lebaigue ("Licensor") for the use, reproduction, and distribution of the software known as "FLUX-OS" (the "Software").</p>
+                    <p>By installing, copying, accessing, or otherwise using the Software, Licensee agrees to be bound by the terms of this Agreement. If Licensee does not agree to the terms of this Agreement, Licensor is unwilling to license the Software to Licensee, and Licensee may not use the Software.</p>
+                    
+                    <p><strong>2. DEFINITIONS</strong><br>
+                    2.1 "Software" shall mean the FLUX-OS operating system, including but not limited to the kernel source code, bootloader, graphics libraries, build scripts, documentation, object files, binary executables, ISO images, and any associated media or printed materials.<br>
+                    2.2 "Derivative Work" shall mean any work based upon the Software or any portion thereof.<br>
+                    2.3 "Source Code" shall mean the preferred form of the Software for making modifications to it.<br>
+                    2.4 "Object Code" shall mean any form resulting from mechanical transformation or translation of the Source Code.</p>
+
+                    <p><strong>3. GRANT OF LICENSE</strong><br>
+                    3.1 Limited License. Subject to the terms and conditions of this Agreement, Licensor hereby grants to Licensee a non-exclusive, non-transferable, revocable license to use the Software for personal, educational, and non-commercial evaluation purposes.<br>
+                    3.2 Restrictions. Licensee may NOT: (a) Redistribute the Software. (b) Use the Software for commercial purposes. (c) Modify, adapt, translate, reverse engineer, decompile, disassemble, or create Derivative Works. (d) Remove or alter proprietary rights notices. (e) Use the Software to develop competing systems.</p>
+
+                    <p><strong>4. INTELLECTUAL PROPERTY RIGHTS</strong><br>
+                    4.1 Ownership. Licensor retains all right, title, and interest in and to the Software.<br>
+                    4.2 Reservations. Licensee acknowledges that the Software contains valuable trade secrets.</p>
+
+                    <p><strong>5. CONFIDENTIALITY</strong><br>
+                    Licensee agrees to maintain the confidentiality of the Source Code.</p>
+
+                    <p><strong>6. NO WARRANTY</strong><br>
+                    6.1 Disclaimer. THE SOFTWARE IS PROVIDED "AS IS". LICENSOR DISCLAIMS ALL OTHER WARRANTIES.<br>
+                    6.2 No Technical Support. Licensor is under no obligation to provide support.</p>
+
+                    <p><strong>7. LIMITATION OF LIABILITY</strong><br>
+                    TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING OUT OF THE USE OF THE SOFTWARE.</p>
+
+                    <p><strong>8. TERMINATION</strong><br>
+                    This Agreement is effective until terminated. Upon termination, Licensee shall destroy all copies.</p>
+
+                    <p><strong>9. EXPORT CONTROL</strong><br>
+                    Licensee agrees to comply with all applicable export control laws.</p>
+                    
+                    <p><strong>10. MISCELLANEOUS</strong><br>
+                    This Agreement shall be governed by the laws in which Oliver Lebaigue resides.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/whiteo55/Flux-OS" target="_blank">GitHub</a>
+                <a href="#license">License</a>
+            </div>
+            <p class="copyright">
+                &copy; 2026 Oliver Lebaigue. All rights reserved.<br>
+                Not affiliated with Nothing Technology Ltd.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // === FEATURE 1: KERNEL PANIC EASTER EGG ===
+        const logoDot = document.getElementById('logoDot');
+        const panicOverlay = document.getElementById('kernel-panic');
+        const panicDump = document.getElementById('panic-dump');
+        let clickCount = 0;
+        let clickTimer;
+
+        logoDot.addEventListener('click', () => {
+            clickCount++;
+            
+            // Visual feedback on click
+            logoDot.style.transform = 'scale(0.6)';
+            setTimeout(() => logoDot.style.transform = 'scale(1)', 100);
+
+            // Reset clicks if user stops clicking for 1 second
+            clearTimeout(clickTimer);
+            clickTimer = setTimeout(() => { clickCount = 0; }, 1000);
+
+            if (clickCount >= 3) {
+                triggerKernelPanic();
+            }
+        });
+
+        function triggerKernelPanic() {
+            panicOverlay.style.display = 'flex';
+            let memAddr = 0x00000000;
+            
+            // Fake memory dump effect
+            const dumpInterval = setInterval(() => {
+                memAddr += 4;
+                const hexAddr = '0x' + memAddr.toString(16).toUpperCase().padStart(8, '0');
+                const randomVal = '0x' + Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
+                panicDump.innerText = `${hexAddr}: ${randomVal}`;
+            }, 50);
+
+            // Reload page after 4 seconds
+            setTimeout(() => {
+                clearInterval(dumpInterval);
+                location.reload();
+            }, 4000);
+        }
+
+        // === FEATURE 2: TERMINAL TYPING EFFECT ===
+        const heroTitle = document.getElementById('heroTitle');
+        const textToType = "WELCOME TO THE HOME OF\nFLUX-OS";
+        let typeIndex = 0;
+
+        function typeWriter() {
+            if (typeIndex < textToType.length) {
+                const char = textToType.charAt(typeIndex);
+                if (char === '\n') {
+                    heroTitle.innerHTML += '<br>';
+                } else {
+                    heroTitle.innerHTML += char;
+                }
+                typeIndex++;
+                setTimeout(typeWriter, 50); // Typing speed
+            }
+        }
+
+        // Start typing when page loads
+        window.addEventListener('load', typeWriter);
+
+
+        // === FEATURE 3: SYSTEM CLOCK ===
+        const sysClock = document.getElementById('sysClock');
+        
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-US', { hour12: false });
+            sysClock.textContent = timeString;
+        }
+        
+        setInterval(updateClock, 1000);
+        updateClock(); // Initial call
+
+
+        // === THEME TOGGLE LOGIC ===
+        const themeToggle = document.getElementById('themeToggle');
+        const body = document.body;
+
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('light-mode');
+            if (body.classList.contains('light-mode')) {
+                themeToggle.textContent = 'Dark Mode';
+            } else {
+                themeToggle.textContent = 'Light Mode';
+            }
+        });
+
+        // === HEADER SCROLL EFFECT ===
+        const header = document.getElementById('header');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // === SMOOTH SCROLLING ===
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                if(targetId === '#') return;
+                const targetElement = document.querySelector(targetId);
+                if(targetElement){
+                    targetElement.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

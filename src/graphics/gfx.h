@@ -17,16 +17,6 @@
 #define COLOR_YELLOW    0xFFFFFF00
 #define COLOR_MAGENTA   0xFFFF00FF
 
-// Window structure
-typedef struct {
-    int x, y;
-    int width, height;
-    int flags;
-    uint32_t bg_color;
-    uint32_t border_color;
-    const char* title;
-} window_t;
-
 // Basic drawing functions
 void set_pixel(int x, int y, uint32_t color);
 void fill_rect(int x, int y, int width, int height, uint32_t color);
@@ -34,11 +24,6 @@ void draw_rect(int x, int y, int width, int height, uint32_t color);
 void draw_line(int x1, int y1, int x2, int y2, uint32_t color);
 void draw_char(int x, int y, char c, uint32_t fg, uint32_t bg);
 void draw_string(int x, int y, const char* str, uint32_t fg, uint32_t bg);
-
-// Window functions
-void draw_window(window_t* win);
-void draw_taskbar(uint32_t color);
-void draw_wallpaper();
 void clear_screen(uint32_t color);
 
 #endif // GFX_H

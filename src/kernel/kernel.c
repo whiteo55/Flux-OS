@@ -1,6 +1,13 @@
 #include <stdint.h>
+#include <stddef.h>
 
-// Graphics library declarations (same as in gfx.h)
+// Forward declaration of GUI functions (defined in gui/desktop.c)
+extern void gui_init(int width, int height, void* fb, int pitch);
+extern void gui_run();
+extern void gui_shutdown();
+extern void gui_create_desktop();
+
+// Graphics library declarations
 typedef struct {
     int x, y;
     int width, height;
@@ -210,6 +217,8 @@ void kernel_main(multiboot_info_t* mb_info) {
         // Try reading the vbe_mode_info
         row = 7;
         col = 0;
+        int graphics_available = 0;
+        int fb_addr_val = 0;
         
         if (vbe_raw == 0) {
             const char* msg = "VBE pointer is NULL - using hardcoded values";
@@ -219,9 +228,10 @@ void kernel_main(multiboot_info_t* mb_info) {
             
             // Fallback: hardcoded values
             framebuffer = (uint32_t*)0xFD000000;
-            screen_width = 1024;
-            screen_height = 768;
-            pitch = 1024 * 4;
+            screen_width = 800;
+            screen_height = 600;
+            pitch = 800 * 4;
+            graphics_available = 1;
             
         } else {
             // VBE is available! Read framebuffer address from it
@@ -233,45 +243,66 @@ void kernel_main(multiboot_info_t* mb_info) {
             }
             
             // Extract framebuffer address, width, height, pitch
-            framebuffer = (uint32_t*)(vbe_mode->physbase);
+            uint32_t fb_addr = vbe_mode->physbase;
             screen_width = vbe_mode->width;
             screen_height = vbe_mode->height;
             pitch = vbe_mode->pitch;
+            fb_addr_val = fb_addr;
             
-            row = 8;
-            col = 0;
-            const char* fb_info = "VBE Framebuffer: ";
-            for (int i = 0; fb_info[i]; i++) {
-                vga[row * 80 + col + i] = (uint16_t)fb_info[i] | ((uint16_t)0x0A << 8);
-            }
+            // Check if framebuffer address is valid (not 0)
+            if (fb_addr == 0 || screen_width == 0 || screen_height == 0) {
+                // Invalid VBE info, use fallback
+                // QEMU with std vga typically uses 0xE0000000 for framebuffer
+                row++;
+                col = 0;
+                const char* fb_msg = "VBE info invalid - using fallback 1024x768";
+                for (int i = 0; fb_msg[i]; i++) {
+                    vga[row * 80 + col + i] = (uint16_t)fb_msg[i] | ((uint16_t)0x0C << 8);
+                }
+                
+                framebuffer = (uint32_t*)0xE0000000;
+                screen_width = 1024;
+                screen_height = 768;
+                pitch = 1024 * 4;
+                graphics_available = 1;
+            } else {
+                framebuffer = (uint32_t*)fb_addr;
+                graphics_available = 1;
             
-            // Print framebuffer address as hex
-            uint32_t fb_addr = (uint32_t)framebuffer;
-            const char hex_digits[] = "0123456789ABCDEF";
-            col = 17;
-            for (int i = 28; i >= 0; i -= 4) {
-                vga[row * 80 + col++] = (uint16_t)hex_digits[(fb_addr >> i) & 0xF] | ((uint16_t)0x0A << 8);
+                row = 8;
+                col = 0;
+                const char* fb_info = "VBE Framebuffer: ";
+                for (int i = 0; fb_info[i]; i++) {
+                    vga[row * 80 + col + i] = (uint16_t)fb_info[i] | ((uint16_t)0x0A << 8);
+                }
+                
+                // Print framebuffer address as hex
+                const char hex_digits[] = "0123456789ABCDEF";
+                col = 17;
+                for (int i = 28; i >= 0; i -= 4) {
+                    vga[row * 80 + col++] = (uint16_t)hex_digits[(fb_addr >> i) & 0xF] | ((uint16_t)0x0A << 8);
+                }
+                
+                row = 9;
+                col = 0;
+                const char* sz_info = "VBE Resolution: ";
+                for (int i = 0; sz_info[i]; i++) {
+                    vga[row * 80 + col + i] = (uint16_t)sz_info[i] | ((uint16_t)0x0A << 8);
+                }
+                // Print width x height
+                col = 16;
+                uint16_t w = screen_width;
+                uint16_t h = screen_height;
+                vga[row * 80 + col++] = (uint16_t)('0' + (w / 1000)) | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)('0' + ((w / 100) % 10)) | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)('0' + ((w / 10) % 10)) | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)('0' + (w % 10)) | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)'x' | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)('0' + (h / 1000)) | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)('0' + ((h / 100) % 10)) | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)('0' + ((h / 10) % 10)) | ((uint16_t)0x0A << 8);
+                vga[row * 80 + col++] = (uint16_t)('0' + (h % 10)) | ((uint16_t)0x0A << 8);
             }
-            
-            row = 9;
-            col = 0;
-            const char* sz_info = "VBE Resolution: ";
-            for (int i = 0; sz_info[i]; i++) {
-                vga[row * 80 + col + i] = (uint16_t)sz_info[i] | ((uint16_t)0x0A << 8);
-            }
-            // Print width x height
-            col = 16;
-            uint16_t w = screen_width;
-            uint16_t h = screen_height;
-            vga[row * 80 + col++] = (uint16_t)('0' + (w / 1000)) | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)('0' + ((w / 100) % 10)) | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)('0' + ((w / 10) % 10)) | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)('0' + (w % 10)) | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)'x' | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)('0' + (h / 1000)) | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)('0' + ((h / 100) % 10)) | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)('0' + ((h / 10) % 10)) | ((uint16_t)0x0A << 8);
-            vga[row * 80 + col++] = (uint16_t)('0' + (h % 10)) | ((uint16_t)0x0A << 8);
         }
             
             // Graphics initialization attempted but QEMU VBE not initialized by GRUB
@@ -282,11 +313,37 @@ void kernel_main(multiboot_info_t* mb_info) {
             for (int i = 0; status[i]; i++) {
                 vga[row * 80 + col + i] = (uint16_t)status[i] | ((uint16_t)0x0A << 8);
             }
+        
+        // Initialize GUI if graphics is available
+        if (graphics_available) {
+            row = 11;
+            col = 0;
+            const char* gui_msg = "Initializing WIMP GUI...";
+            for (int i = 0; gui_msg[i]; i++) {
+                vga[row * 80 + col + i] = (uint16_t)gui_msg[i] | ((uint16_t)0x0A << 8);
+            }
+            
+            // Initialize GUI
+            gui_init(screen_width, screen_height, framebuffer, pitch);
+            
+            row = 12;
+            col = 0;
+            const char* ready_msg = "GUI Initialized! Press any key to start GUI.";
+            for (int i = 0; ready_msg[i]; i++) {
+                vga[row * 80 + col + i] = (uint16_t)ready_msg[i] | ((uint16_t)0x0A << 8);
+            }
+            
+            // Create desktop environment
+            gui_create_desktop();
+            
+            // Run the GUI (this will loop indefinitely)
+            gui_run();
         }
     }
     
-    // Infinite idle loop
+    // Infinite idle loop (will never be reached if GUI runs)
     while (1) {
         __asm__("hlt");
     }
 }
+

@@ -1,0 +1,52 @@
+{
+  "name": "flux-os",
+  "version": "2.3.0-pre-alpha",
+  "description": "A minimalist 32-bit operating system written from scratch in C and x86 Assembly",
+  "main": "src/kernel/kernel.c",
+  "scripts": {
+    "build": "bash build.sh",
+    "build:clean": "rm -f *.o flux-kernel flux-os.iso && bash build.sh",
+    "build:iso": "bash build.sh",
+    "run": "bash run_qemu.sh",
+    "run:graphics": "bash run_graphics.sh",
+    "run:gui": "bash run_gui.sh",
+    "check:multiboot": "grub-file --is-x86-multiboot flux-kernel",
+    "clean": "rm -f *.o flux-kernel flux-os.iso",
+    "test": "npm run check:multiboot && echo 'Multiboot compliance verified!'",
+    "info": "uname -a && echo '---' && gcc --version && echo '---' && as --version | head -1 && echo '---' && ld --version | head -1"
+  },
+  "keywords": [
+    "os",
+    "operating-system",
+    "kernel",
+    "baremetal",
+    "x86",
+    "multiboot",
+    "assembly",
+    "c"
+  ],
+  "author": "Oliver Lebaigue",
+  "license": "Proprietary",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oliver-lebaigue-2-bright-bench/Flux-OS.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oliver-lebaigue-2-bright-bench/Flux-OS/issues"
+  },
+  "homepage": "https://github.com/oliver-lebaigue-2-bright-bench/Flux-OS",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "os": "^2.1.0"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x86",
+    "i386"
+  ]
+}
+
